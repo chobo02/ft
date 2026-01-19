@@ -1,0 +1,575 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>이미지 EXIF 제거 및 포맷 변환기</title>
+    
+    <!-- 1. 필요한 라이브러리들을 인터넷(CDN)에서 불러옵니다 -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+    <script src="https://unpkg.com/react@18/umd/react.development.js" crossorigin></script>
+    <script src="https://unpkg.com/react-dom@18/umd/react-dom.development.js" crossorigin></script>
+    <!-- Babel: JSX 코드를 브라우저가 이해할 수 있게 실시간으로 번역해주는 도구 -->
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+
+    <style>
+      body {
+        -webkit-font-smoothing: antialiased;
+        -moz-osx-font-smoothing: grayscale;
+        /* 배경색 지정 제거 (투명/기본값) */
+        /* 텍스트 색상을 어두운 색(다크 그레이)으로 변경 */
+        color: #1f2937; /* text-gray-800 */
+      }
+      .animate-spin {
+        animation: spin 1s linear infinite;
+      }
+      @keyframes spin {
+        from { transform: rotate(0deg); }
+        to { transform: rotate(360deg); }
+      }
+    </style>
+</head>
+<body>
+
+    <div id="root"></div>
+
+    <!-- 2. 모든 JavaScript와 React 코드를 여기에 통합합니다 -->
+    <script type="text/babel">
+    
+    // --- START: 모든 코드를 여기에 통합 ---
+    
+    // components/Icons.js
+    const UploadCloudIcon = (props) => (
+      <svg {...props} xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+        <path d="M4 14.899A7 7 0 1 1 15.71 8h1.79a4.5 4.5 0 0 1 2.5 8.242" /><path d="M12 12v9" /><path d="m16 16-4-4-4 4" />
+      </svg>
+    );
+    const DownloadIcon = (props) => (
+      <svg {...props} xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+        <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" /><polyline points="7 10 12 15 17 10" /><line x1="12" y1="15" x2="12" y2="3" />
+      </svg>
+    );
+    const TrashIcon = (props) => (
+      <svg {...props} xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+        <path d="M3 6h18" /><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6" /><path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
+      </svg>
+    );
+    const ImageIcon = (props) => (
+      <svg {...props} xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+        <rect width="18" height="18" x="3" y="3" rx="2" ry="2" /><circle cx="9" cy="9" r="2" /><path d="m21 15-3.086-3.086a2 2 0 0 0-2.828 0L6 21" />
+      </svg>
+    );
+    const ZipIcon = (props) => (
+      <svg {...props} xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+        <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" /><path d="M12 2v10" /><path d="m16 8-4 4-4-4" /><path d="M10 15h4" /><path d="M10 18h4" /><path d="M10 12h4" />
+      </svg>
+    );
+    const LoaderIcon = (props) => (
+        <svg {...props} xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="animate-spin">
+            <path d="M21 12a9 9 0 1 1-6.219-8.56" />
+        </svg>
+    );
+    const SearchIcon = (props) => (
+      <svg {...props} xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+        <circle cx="11" cy="11" r="8" /><line x1="21" y1="21" x2="16.65" y2="16.65" />
+      </svg>
+    );
+    const XIcon = (props) => (
+      <svg {...props} xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+        <line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" />
+      </svg>
+    );
+
+    // services/imageProcessor.js
+    const processImage = (file, format) => {
+      return new Promise((resolve, reject) => {
+        const objectURL = URL.createObjectURL(file);
+        const img = new Image();
+        img.onload = () => {
+          URL.revokeObjectURL(objectURL);
+          try {
+            const originalWidth = img.width;
+            const originalHeight = img.height;
+            const shrinkWidth = Math.max(1, originalWidth - 1);
+            const shrinkHeight = Math.max(1, originalHeight - 1);
+            const shrinkCanvas = document.createElement('canvas');
+            shrinkCanvas.width = shrinkWidth;
+            shrinkCanvas.height = shrinkHeight;
+            const shrinkCtx = shrinkCanvas.getContext('2d');
+            if (!shrinkCtx) return reject(new Error('Could not get shrink canvas context'));
+            shrinkCtx.drawImage(img, 0, 0, shrinkWidth, shrinkHeight);
+            
+            const finalCanvas = document.createElement('canvas');
+            finalCanvas.width = originalWidth;
+            finalCanvas.height = originalHeight;
+            const finalCtx = finalCanvas.getContext('2d');
+            if (!finalCtx) return reject(new Error('Could not get final canvas context'));
+            
+            finalCtx.imageSmoothingEnabled = false;
+            finalCtx.drawImage(shrinkCanvas, 0, 0, originalWidth, originalHeight);
+
+            const mimeType = `image/${format}`;
+            finalCanvas.toBlob(
+              (blob) => {
+                if (!blob) return reject(new Error('Canvas toBlob failed to create a blob.'));
+                const finalReader = new FileReader();
+                finalReader.onload = (e) => {
+                  const dataUrl = e.target?.result;
+                  if (!dataUrl) return reject(new Error('Failed to convert clean blob to data URL.'));
+                  const newSize = blob.size;
+                  const baseName = file.name.substring(0, file.name.lastIndexOf('.')) || file.name;
+                  const extension = format === 'jpeg' ? 'jpg' : format;
+                  const newFilename = `${baseName}_img.${extension}`;
+                  resolve({ filename: newFilename, dataUrl, originalSize: file.size, newSize });
+                };
+                finalReader.onerror = () => reject(new Error('FileReader error on final blob.'));
+                finalReader.readAsDataURL(blob);
+              },
+              mimeType,
+              1.0
+            );
+          } catch (error) {
+            console.error("Error during canvas resampling processing:", error);
+            reject(error);
+          }
+        };
+        img.onerror = () => {
+          URL.revokeObjectURL(objectURL);
+          reject(new Error('Image failed to load. It may be corrupt or unsupported.'));
+        };
+        img.src = objectURL;
+      });
+    };
+
+    // services/metadataParser.js
+    const METADATA_KEYWORDS_TO_FIND = ['Comment', 'Description', 'Software', 'Source', 'Title', 'Artist', 'Copyright', 'Creation Time', 'Disclaimer', 'Warning', 'parameters', 'uc'];
+    function bytesToString(bytes) {
+        return new TextDecoder('utf-8', { fatal: false }).decode(bytes);
+    }
+    function parsePng(buffer) {
+        const foundMetadata = {};
+        const view = new DataView(buffer);
+        let offset = 8;
+        while (offset < view.byteLength) {
+            if (offset + 8 > view.byteLength) break;
+            const length = view.getUint32(offset);
+            const type = bytesToString(new Uint8Array(buffer, offset + 4, 4));
+            const dataOffset = offset + 8;
+            if (dataOffset + length > view.byteLength) break;
+            if (type === 'tEXt' || type === 'iTXt' || type === 'zTXt') {
+                const dataBytes = new Uint8Array(buffer, dataOffset, length);
+                const nullSeparatorIndex = dataBytes.indexOf(0);
+                if (nullSeparatorIndex > 0) {
+                    const keyword = bytesToString(dataBytes.subarray(0, nullSeparatorIndex));
+                    let value = bytesToString(dataBytes.subarray(nullSeparatorIndex + 1)).replace(/[\x00-\x1F\x7F-\x9F]/g, ' ').trim();
+                    if (METADATA_KEYWORDS_TO_FIND.some(k => keyword.toLowerCase().includes(k.toLowerCase()))) {
+                        if (value) foundMetadata[keyword] = value;
+                    }
+                }
+            }
+            offset += 12 + length;
+            if (type === 'IEND') break;
+        }
+        return foundMetadata;
+    }
+    function parseJpeg(buffer) {
+        const foundMetadata = {};
+        const view = new DataView(buffer);
+        let offset = 2;
+        while (offset < view.byteLength) {
+            if (view.getUint8(offset) !== 0xFF) break;
+            const marker = view.getUint8(offset + 1);
+            offset += 2;
+            if (marker === 0xD8 || marker === 0x01 || (marker >= 0xD0 && marker <= 0xD7)) continue;
+            if (marker === 0xD9) break;
+            if (offset + 2 > view.byteLength) break;
+            const length = view.getUint16(offset);
+            const dataOffset = offset + 2;
+            if (dataOffset + length - 2 > view.byteLength) break;
+            if (marker === 0xFE) {
+                const commentBytes = new Uint8Array(buffer, dataOffset, length - 2);
+                foundMetadata['Comment'] = bytesToString(commentBytes).replace(/[\x00-\x1F\x7F-\x9F]/g, ' ').trim();
+            } else if (marker === 0xE1) {
+                const app1Data = new Uint8Array(buffer, dataOffset, length - 2);
+                const app1String = bytesToString(app1Data);
+                if (app1String.startsWith('Exif\x00\x00')) {
+                    foundMetadata['EXIF Block'] = 'EXIF 메타데이터 블록이 존재합니다. (세부 내용은 표시되지 않음)';
+                    if (app1String.includes('parameters')) {
+                        foundMetadata['AI Parameters'] = 'AI 생성 파라미터(프롬프트 등)가 포함되어 있을 수 있습니다.';
+                    }
+                }
+            }
+            offset += length;
+        }
+        return foundMetadata;
+    }
+    const parseMetadata = (file) => {
+      return new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = (event) => {
+            try {
+                const buffer = event.target?.result;
+                if (!buffer) return reject(new Error("File buffer is empty."));
+                let foundMetadata = {};
+                const signatureBytes = new Uint8Array(buffer, 0, 8);
+                if (signatureBytes[0] === 137 && signatureBytes[1] === 80 && signatureBytes[2] === 78 && signatureBytes[3] === 71) {
+                    foundMetadata = parsePng(buffer);
+                } else if (signatureBytes[0] === 0xFF && signatureBytes[1] === 0xD8) {
+                    foundMetadata = parseJpeg(buffer);
+                } else {
+                     foundMetadata['Error'] = '지원되지 않는 파일 형식이거나 파일이 손상되었습니다.';
+                }
+                if (Object.keys(foundMetadata).length === 0) {
+                  foundMetadata['Result'] = '분석 결과, 이미지에서 지정된 텍스트 기반 메타데이터를 찾지 못했습니다. 파일이 깨끗한 것으로 보입니다.';
+                }
+                resolve(foundMetadata);
+            } catch (e) {
+                console.error("Metadata parsing error:", e);
+                reject(e);
+            }
+        };
+        reader.onerror = () => reject(new Error("FileReader encountered an error during reading."));
+        reader.readAsArrayBuffer(file);
+      });
+    };
+
+    // components/MetadataViewer.js
+    const MetadataViewer = ({ filename, metadata, onClose }) => {
+      return (
+        <div className="fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center p-4 z-50" onClick={onClose}>
+          {/* 모달 배경: 다크 그레이 -> 흰색, 텍스트 색상 변경 */}
+          <div className="bg-white rounded-lg shadow-xl w-full max-w-2xl max-h-[80vh] flex flex-col" onClick={(e) => e.stopPropagation()}>
+            <div className="flex justify-between items-center p-4 border-b border-gray-200 sticky top-0 bg-white rounded-t-lg">
+              <h3 className="text-xl font-semibold text-gray-900">메타데이터 분석 결과</h3>
+              <button onClick={onClose} className="text-gray-500 hover:text-gray-800 transition-colors">
+                <XIcon className="w-6 h-6" />
+              </button>
+            </div>
+            <div className="p-6 overflow-y-auto">
+              <p className="text-lg text-gray-600 mb-4 break-all">
+                <span className="font-bold text-gray-900">파일:</span> {filename}
+              </p>
+              <div className="space-y-3">
+                {Object.keys(metadata).length > 0 ? (
+                    Object.entries(metadata).map(([key, value]) => (
+                    // 항목 배경: 어두운 색 -> 밝은 회색
+                    <div key={key} className="bg-gray-100 p-3 rounded-md">
+                        <strong className="text-indigo-600 block mb-1 break-words">{key}</strong>
+                        <pre className="text-gray-800 whitespace-pre-wrap text-sm font-mono break-all">{value}</pre>
+                    </div>
+                    ))
+                ) : (
+                    <div className="bg-gray-100 p-3 rounded-md">
+                        <strong className="text-green-600">분석 완료</strong>
+                        <p className="text-gray-800 whitespace-pre-wrap text-sm">이미지에서 알려진 텍스트 기반 메타데이터를 찾지 못했습니다.</p>
+                    </div>
+                )}
+              </div>
+            </div>
+          </div>
+        </div>
+      );
+    };
+    
+    // App.js
+    const App = () => {
+      const [originalFiles, setOriginalFiles] = React.useState([]);
+      const [processedImages, setProcessedImages] = React.useState([]);
+      const [processingFormat, setProcessingFormat] = React.useState(null);
+      const [isZipping, setIsZipping] = React.useState(false);
+      const [isDragging, setIsDragging] = React.useState(false);
+      const [isAnalyzing, setIsAnalyzing] = React.useState(null);
+      const [viewingMetadata, setViewingMetadata] = React.useState(null);
+      const fileInputRef = React.useRef(null);
+
+      const handleFileChange = (files) => {
+        if (files) {
+          const imageFiles = Array.from(files).filter(file => file.type.startsWith('image/'));
+          setOriginalFiles(prev => [...prev, ...imageFiles]);
+        }
+      };
+
+      const onDragOver = (e) => { e.preventDefault(); setIsDragging(true); };
+      const onDragLeave = (e) => { e.preventDefault(); setIsDragging(false); };
+      const onDrop = (e) => {
+        e.preventDefault();
+        setIsDragging(false);
+        handleFileChange(e.dataTransfer.files);
+      };
+
+      const triggerFileSelect = () => { fileInputRef.current?.click(); };
+
+      const handleProcessImages = React.useCallback(async (format) => {
+        if (originalFiles.length === 0) return;
+        setProcessingFormat(format);
+        setProcessedImages([]);
+        try {
+          const processed = await Promise.all(originalFiles.map(file => processImage(file, format)));
+          setProcessedImages(processed);
+        } catch (error) {
+          console.error("Error processing images:", error);
+          alert("이미지 처리 중 오류가 발생했습니다.");
+        } finally {
+          setProcessingFormat(null);
+        }
+      }, [originalFiles]);
+
+      const handleDownload = (dataUrl, filename) => {
+        const link = document.createElement('a');
+        link.href = dataUrl;
+        link.download = filename;
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+      };
+      
+      const handleDownloadAll = React.useCallback(async () => {
+        if (processedImages.length === 0) return;
+        setIsZipping(true);
+        try {
+          const zip = new JSZip();
+          for (const image of processedImages) {
+            const response = await fetch(image.dataUrl);
+            const blob = await response.blob();
+            zip.file(image.filename, blob);
+          }
+          zip.generateAsync({ type: 'blob' }).then((content) => {
+            const link = document.createElement('a');
+            link.href = URL.createObjectURL(content);
+            link.download = 'processed_images.zip';
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+          });
+        } catch (error) {
+            console.error("Error creating zip file:", error);
+            alert("ZIP 파일 생성 중 오류가 발생했습니다.");
+        } finally {
+            setIsZipping(false);
+        }
+      }, [processedImages]);
+
+      const handleAnalyzeMetadata = async (source, filename) => {
+        setIsAnalyzing(filename);
+        try {
+            let fileToAnalyze;
+            if (typeof source === 'string') {
+                const response = await fetch(source);
+                fileToAnalyze = await response.blob();
+            } else {
+                fileToAnalyze = source;
+            }
+            const metadata = await parseMetadata(fileToAnalyze);
+            setViewingMetadata({ filename, metadata });
+        } catch (error) {
+            console.error("Error analyzing metadata:", error);
+            alert("메타데이터 분석 중 오류가 발생했습니다.");
+        } finally {
+            setIsAnalyzing(null);
+        }
+      };
+
+      const handleClear = () => {
+        setOriginalFiles([]);
+        setProcessedImages([]);
+        if(fileInputRef.current) {
+            fileInputRef.current.value = "";
+        }
+      };
+      
+      const formatBytes = (bytes, decimals = 2) => {
+        if (bytes === 0) return '0 Bytes';
+        const k = 1024;
+        const dm = decimals < 0 ? 0 : decimals;
+        const sizes = ['Bytes', 'KB', 'MB', 'GB', 'TB'];
+        const i = Math.floor(Math.log(bytes) / Math.log(k));
+        return parseFloat((bytes / Math.pow(k, i)).toFixed(dm)) + ' ' + sizes[i];
+      };
+
+      const baseButtonClasses = "flex items-center justify-center w-full sm:w-auto px-6 py-3 disabled:cursor-not-allowed text-white rounded-lg transition-colors duration-200 text-md font-semibold shadow-lg";
+      const isProcessing = !!processingFormat;
+
+      return (
+        <React.Fragment>
+          {/* 전체 배경색 제거, 텍스트 색상 변경 */}
+          <div className="min-h-screen text-gray-900 flex flex-col items-center p-4 sm:p-6 lg:p-8">
+            <div className="w-full max-w-6xl mx-auto">
+              <header className="text-center mb-8">
+                {/* <h1 className="text-4xl sm:text-5xl font-bold text-gray-900">이미지 EXIF 제거 & 포맷 변환기</h1> */}
+                <p className="text-lg text-gray-600 mt-2">메타데이터를 제거하고 이미지를 최고 품질의 JPG, PNG, WebP로 변환합니다.</p>
+              </header>
+
+              <main className="space-y-8">
+                {originalFiles.length === 0 ? (
+                  <div
+                    onClick={triggerFileSelect}
+                    onDragOver={onDragOver}
+                    onDragLeave={onDragLeave}
+                    onDrop={onDrop}
+                    /* 드롭존: 배경색 투명/밝은 회색, 테두리 색상 변경 */
+                    className={`flex flex-col items-center justify-center w-full h-64 border-2 border-dashed rounded-lg cursor-pointer transition-colors duration-300 ${isDragging ? 'border-indigo-400 bg-gray-50' : 'border-gray-300 hover:border-gray-400 hover:bg-gray-50'}`}
+                  >
+                    <UploadCloudIcon className="w-16 h-16 text-gray-400 mb-4" />
+                    <p className="mb-2 text-lg text-gray-600"><span className="font-semibold">클릭하여 업로드</span>하거나 파일을 끌어다 놓으세요.</p>
+                    <p className="text-sm text-gray-500">다중 이미지 선택 가능</p>
+                    <input
+                      ref={fileInputRef}
+                      type="file"
+                      multiple
+                      accept="image/*"
+                      onChange={(e) => handleFileChange(e.target.files)}
+                      className="hidden"
+                    />
+                  </div>
+                ) : (
+                  <section>
+                    <div className="flex justify-between items-center mb-4">
+                      <h2 className="text-2xl font-semibold text-gray-800">선택된 이미지 ({originalFiles.length})</h2>
+                      <button
+                          onClick={handleClear}
+                          className="flex items-center px-4 py-2 bg-red-600 hover:bg-red-700 text-white rounded-md transition-colors duration-200 text-sm font-medium shadow-sm"
+                      >
+                          <TrashIcon className="w-4 h-4 mr-2" />
+                          모두 지우기
+                      </button>
+                    </div>
+                    <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-4">
+                      {originalFiles.map((file, index) => (
+                        /* 이미지 카드: 흰색 배경, 테두리, 그림자 */
+                        <div key={index} className="relative group bg-white border border-gray-200 shadow-sm rounded-lg overflow-hidden aspect-square">
+                          <img src={URL.createObjectURL(file)} alt={file.name} className="w-full h-full object-cover" />
+                          <div className="absolute inset-0 bg-black bg-opacity-0 group-hover:bg-opacity-40 transition-all duration-300 flex flex-col items-center justify-center p-2">
+                            <button
+                                onClick={() => handleAnalyzeMetadata(file, file.name)}
+                                disabled={!!isAnalyzing}
+                                className="flex items-center px-4 py-2 bg-white hover:bg-gray-100 text-gray-900 rounded-full text-sm font-bold opacity-0 group-hover:opacity-100 transform scale-90 group-hover:scale-100 transition-all duration-300 shadow-md disabled:opacity-50"
+                            >
+                                {isAnalyzing === file.name ? <LoaderIcon className="w-5 h-5 mr-2" /> : <SearchIcon className="w-5 h-5 mr-2" />}
+                                메타데이터 분석
+                            </button>
+                          </div>
+                           <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/60 to-transparent p-2">
+                              <p className="text-xs text-white truncate">{file.name}</p>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </section>
+                )}
+
+                {originalFiles.length > 0 && (
+                  /* 옵션 박스: 밝은 회색 배경 */
+                  <div className="flex flex-col items-center space-y-6 bg-gray-100 border border-gray-200 p-6 rounded-lg">
+                    <div className="flex flex-col sm:flex-row gap-4">
+                      <button
+                        onClick={() => handleProcessImages('jpeg')}
+                        disabled={isProcessing}
+                        className={`${baseButtonClasses} bg-indigo-600 hover:bg-indigo-700 disabled:bg-indigo-400`}
+                      >
+                        {processingFormat === 'jpeg' ? <LoaderIcon className="w-6 h-6 mr-3" /> : <ImageIcon className="w-6 h-6 mr-3" />}
+                        JPG로 변환
+                      </button>
+                      <button
+                        onClick={() => handleProcessImages('png')}
+                        disabled={isProcessing}
+                        className={`${baseButtonClasses} bg-blue-600 hover:bg-blue-700 disabled:bg-blue-400`}
+                      >
+                        {processingFormat === 'png' ? <LoaderIcon className="w-6 h-6 mr-3" /> : <ImageIcon className="w-6 h-6 mr-3" />}
+                        PNG로 변환
+                      </button>
+                      <button
+                        onClick={() => handleProcessImages('webp')}
+                        disabled={isProcessing}
+                        className={`${baseButtonClasses} bg-teal-600 hover:bg-teal-700 disabled:bg-teal-400`}
+                      >
+                        {processingFormat === 'webp' ? <LoaderIcon className="w-6 h-6 mr-3" /> : <ImageIcon className="w-6 h-6 mr-3" />}
+                        WebP로 변환
+                      </button>
+                    </div>
+                    <div className="text-center text-sm text-gray-600 max-w-3xl space-y-2">
+                        <p><strong className="text-indigo-600">JPG:</strong> 가장 일반적인 이미지 형식. 호환성이 좋고 파일 크기가 작지만, 투명도를 지원하지 않습니다.</p>
+                        <p><strong className="text-blue-600">PNG:</strong> 무손실 압축으로 원본 품질을 유지하며, 투명한 배경을 지원합니다. JPG보다 파일 크기가 큰 경향이 있습니다.</p>
+                        <p><strong className="text-teal-600">WebP:</strong> 구글이 개발한 차세대 이미지 형식. JPG와 PNG의 장점을 결합하여, 더 작은 크기로 고품질 및 투명도를 제공합니다.</p>
+                    </div>
+                  </div>
+                )}
+
+                {processedImages.length > 0 && (
+                  <section>
+                      <div className="flex flex-col sm:flex-row justify-between items-center mb-4 gap-4">
+                          <h2 className="text-2xl font-semibold text-gray-800">변환된 이미지 ({processedImages.length})</h2>
+                          <div className="flex gap-4">
+                              <button
+                                  onClick={handleDownloadAll}
+                                  disabled={isZipping}
+                                  className="flex items-center justify-center px-6 py-3 bg-green-600 hover:bg-green-700 disabled:bg-green-400 text-white rounded-md transition-colors duration-200 font-semibold shadow-sm"
+                              >
+                                  {isZipping ? <LoaderIcon className="w-5 h-5 mr-2" /> : <ZipIcon className="w-5 h-5 mr-2" />}
+                                  모두 다운로드 (.zip)
+                              </button>
+                              <button
+                                  onClick={handleClear}
+                                  className="flex items-center px-6 py-3 bg-gray-500 hover:bg-gray-600 text-white rounded-md transition-colors duration-200 font-semibold shadow-sm"
+                              >
+                                  새로 시작
+                              </button>
+                          </div>
+                      </div>
+                    
+                      <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4">
+                      {processedImages.map((image, index) => (
+                        /* 완료된 이미지 카드: 흰색 배경 */
+                        <div key={index} className="bg-white border border-gray-200 rounded-lg overflow-hidden shadow-md group">
+                          <div className="relative aspect-square bg-gray-100">
+                              <img src={image.dataUrl} alt={image.filename} className="w-full h-full object-cover" />
+                              <div className="absolute inset-0 bg-black bg-opacity-0 group-hover:bg-opacity-40 transition-all duration-300 flex flex-col items-center justify-center gap-2 p-2">
+                                  <button
+                                      onClick={() => handleDownload(image.dataUrl, image.filename)}
+                                      className="flex items-center w-full justify-center px-4 py-2 bg-white hover:bg-gray-100 text-gray-900 rounded-full text-sm font-bold opacity-0 group-hover:opacity-100 transform scale-90 group-hover:scale-100 transition-all duration-300 shadow-md"
+                                  >
+                                      <DownloadIcon className="w-5 h-5 mr-2" />
+                                      다운로드
+                                  </button>
+                                  <button
+                                      onClick={() => handleAnalyzeMetadata(image.dataUrl, image.filename)}
+                                      disabled={!!isAnalyzing}
+                                      className="flex items-center w-full justify-center px-4 py-2 bg-sky-500 hover:bg-sky-600 text-white rounded-full text-sm font-bold opacity-0 group-hover:opacity-100 transform scale-90 group-hover:scale-100 transition-all duration-300 disabled:opacity-50 shadow-md"
+                                  >
+                                      {isAnalyzing === image.filename ? <LoaderIcon className="w-5 h-5 mr-2" /> : <SearchIcon className="w-5 h-5 mr-2" />}
+                                      메타데이터 분석
+                                  </button>
+                              </div>
+                          </div>
+                          <div className="p-3">
+                              <p className="text-sm text-gray-900 truncate font-medium">{image.filename}</p>
+                              <p className="text-xs text-gray-500 mt-1">
+                                {formatBytes(image.originalSize)} → {formatBytes(image.newSize)}
+                              </p>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </section>
+                )}
+              </main>
+            </div>
+          </div>
+          {viewingMetadata && (
+            <MetadataViewer
+                filename={viewingMetadata.filename}
+                metadata={viewingMetadata.metadata}
+                onClose={() => setViewingMetadata(null)}
+            />
+          )}
+        </React.Fragment>
+      );
+    };
+
+    // --- END: 모든 코드 통합 ---
+
+    const root = ReactDOM.createRoot(document.getElementById('root'));
+    root.render(<App />);
+    </script>
+</body>
+</html>
